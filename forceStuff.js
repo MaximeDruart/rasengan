@@ -1,0 +1,43 @@
+import * as THREE from "three"
+const vec3c = new THREE.Vector3()
+const G = 0.01
+const applyForce = (obj, force) => {
+  obj.acc.add(force)
+}
+
+const addGravitationalForce = (attractor, attractee, g = G) => {
+  const force = vec3c.subVectors(attractor.mesh.position, attractee.mesh.position)
+  let distanceSq = force.lengthSq()
+  distanceSq = THREE.MathUtils.clamp(distanceSq, 5000, 50000)
+
+  const strength = (g * (attractor.mass * attractee.mass)) / distanceSq
+  force.setLength(strength)
+
+  applyForce(attractee, force)
+}
+
+const collisionCheck = (itemA, itemB) => {
+  const diff = vec3c.subVectors(itemA.mesh.position, itemB.mesh.position)
+  const distance = diff.length()
+  const radiusSum =
+    itemA.mesh.geometry.parameters.radius * itemA.mesh.scale.x +
+    itemB.mesh.geometry.parameters.radius * itemB.mesh.scale.x
+
+  return distance < radiusSum
+}
+const isBInsideA = (itemA, itemB) => {
+  const diff = vec3c.subVectors(itemA.mesh.position, itemB.mesh.position)
+  const distance = diff.length()
+  const radiusSum =
+    itemA.mesh.geometry.parameters.radius * itemA.mesh.scale.x +
+    itemB.mesh.geometry.parameters.radius * itemB.mesh.scale.x
+
+  return distance < radiusSum
+}
+
+const applyBounceForce = (obj) => {
+  obj.acc = obj.acc.negate()
+  obj.vel = obj.vel.negate()
+}
+
+export { applyForce, addGravitationalForce, collisionCheck, applyBounceForce, isBInsideA }

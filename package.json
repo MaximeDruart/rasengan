@@ -1,0 +1,17 @@
+{
+  "name": "gob",
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^2.6.4"
+  },
+  "dependencies": {
+    "gsap": "^3.8.0",
+    "simplex-noise": "^3.0.0",
+    "three": "^0.134.0"
+  }
+}

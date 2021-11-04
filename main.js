@@ -2,6 +2,12 @@ import * as THREE from "three"
 import SimplexNoise from "simplex-noise"
 import gsap from "gsap"
 
+import Webcam from "webcam-easy"
+import * as tf from "@tensorflow/tfjs"
+import * as handpose from "@tensorflow-models/handpose"
+import * as fp from "fingerpose"
+import { closedHandDescription, openHandDescription } from "./gestures"
+
 import "./style.css"
 
 import explodeMP3 from "./assets/explode.mp3"
@@ -21,6 +27,46 @@ import { addGravitationalForce, applyBounceForce, applyForce, collisionCheck, is
 
 import { GUI } from "three/examples/jsm/libs/dat.gui.module"
 
+let model
+
+const startModel = async () => {
+  webcamElement = document.getElementById("webcam-video")
+  canvasElement = document.getElementById("webcam-canvas")
+  webcam = new Webcam(webcamElement, "user", canvasElement)
+
+  await webcam.start()
+
+  model = await handpose.load()
+  // detect()
+}
+
+const detect = async () => {
+  const predictions = await model.estimateHands(webcamElement)
+
+  if (predictions.length > 0) {
+    const GE = new fp.GestureEstimator([openHandDescription, closedHandDescription])
+    const gesture = await GE.estimate(predictions[0].landmarks, 4)
+    if (gesture.gestures.length === 1) {
+      activeGesture = gesture.gestures[0].name
+    } else {
+      let highestConfidenceGesture = { name: "", score: 0 }
+      for (const _gesture of gesture.gestures) {
+        if (_gesture.score > highestConfidenceGesture.score) {
+          highestConfidenceGesture = _gesture
+        }
+      }
+      activeGesture = highestConfidenceGesture.name
+    }
+  }
+
+  // const ctx = canvasElement.getContext("2d")
+  // drawHand(predictions, ctx)
+
+  setTimeout(() => {
+    detect()
+  }, 100)
+}
+
 const explodeAudio = new Audio(explodeMP3)
 const rampUpAudio = new Audio(rampUpMP3)
 
@@ -30,19 +76,25 @@ let camera,
   composer,
   particles,
   attractor,
+  attractorShield,
+  attractorShieldOpacity = 0,
   addParticlesInterval,
+  absorbMode = false,
   concentration = 0,
   attractorScale = 0,
   isHolding = false,
   amountOfParticle = 25,
   absorbCounter = 0,
   exploding = false,
-  attractorMouseDownMaxScale = 1.6
+  attractorMouseDownMaxScale = 1.6,
+  webcamElement,
+  canvasElement,
+  webcam,
+  activeGesture = "open_hand"
 
 const params = {
   bounceMode: false,
   bounceBetweenSpheres: false,
-  absorbMode: false,
   g: 0.01,
 }
 
@@ -58,6 +110,8 @@ const attractorMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:
 
 const particleGeo = new THREE.SphereBufferGeometry(1, 32, 32)
 const particleMat = new THREE.MeshBasicMaterial({ color: "red" })
+
+startModel()
 
 init()
 animate()
@@ -89,6 +143,15 @@ function init() {
     mesh: new THREE.Mesh(particleGeo, particleMat),
   }))
 
+  attractorShield = {
+    mesh: new THREE.Mesh(
+      new THREE.SphereBufferGeometry(3.5, 64, 64),
+      new THREE.MeshBasicMaterial({ color: 0xccc, wireframe: true, transparent: true, opacity: 1 })
+    ),
+  }
+
+  scene.add(attractorShield.mesh)
+
   scene.add(attractor.mesh)
   for (const particle of particles) {
     particle.mesh.position.copy(particle.pos)
@@ -106,15 +169,8 @@ function init() {
   const renderPass = new RenderPass(scene, camera)
   composer.addPass(renderPass)
 
-  // color to grayscale conversion
-
   const effectGrayScale = new ShaderPass(LuminosityShader)
   composer.addPass(effectGrayScale)
-
-  // you might want to use a gaussian blur filter before
-  // the next pass to improve the result of the Sobel operator
-
-  // Sobel operator
 
   effectSobel = new ShaderPass(SobelOperatorShader)
   effectSobel.uniforms["resolution"].value.x = window.innerWidth * window.devicePixelRatio
@@ -152,24 +208,37 @@ function init() {
     }
   })
   gui.add(params, "bounceBetweenSpheres").onChange(() => {})
-  gui.add(params, "absorbMode").onChange(() => {
-    if (absorbCounter > 50) {
-      concentration = 10000
-      const tl = gsap
-        .timeline({
-          onStart: () => {
-            exploding = true
-            explodeAudio.play()
-            for (const particle of particles) {
-              gsap.to(particle.mesh.scale, { x: 0, y: 0, z: 0 })
-            }
-          },
-        })
-        .to(attractor.mesh.scale, { x: 10, y: 10, z: 10 })
-        .to(attractor.mesh.material, {
+  // gui.add(params, "absorbMode").onChange(handleAbsorbModeChange)
+
+  gui.add(params, "g").min(0.001).max(0.2).step(0.0001)
+
+  window.addEventListener("resize", onWindowResize)
+  window.addEventListener("keydown", onKeyDown)
+  window.addEventListener("keyup", onKeyUp)
+}
+
+function handleAbsorbModeChange() {
+  console.log("starting absorb change fn", absorbMode)
+  if (absorbCounter > 50) {
+    concentration = 10000
+    const tl = gsap
+      .timeline({
+        onStart: () => {
+          console.log("tl is played")
+          exploding = true
+          explodeAudio.play()
+          for (const particle of particles) {
+            gsap.to(particle.mesh.scale, { x: 0, y: 0, z: 0 })
+          }
+        },
+      })
+      .to(attractor.mesh.scale, { x: 10, y: 10, z: 10 })
+      .addLabel("sync")
+      .to(
+        attractor.mesh.material,
+        {
           opacity: 0,
-          duration: 2.5,
-          delay: 0.4,
+          duration: 3,
           onComplete: () => {
             attractor.mesh.scale.set(0, 0, 0)
             attractorScale = 0
@@ -178,30 +247,33 @@ function init() {
             explodeAudio.currentTime = 0
             attractor.mesh.material.opacity = 1
           },
-        })
-      for (const particle of particles) {
-        tl.to(particle.mesh.scale, { x: 1, y: 1, z: 1 })
-      }
-      tl.play()
+        },
+        "sync"
+      )
+      .to(
+        attractor.mesh.scale,
+        {
+          x: 12,
+          y: 12,
+          z: 12,
+          duration: 2.5,
+        },
+        "sync"
+      )
+    for (const particle of particles) {
+      tl.to(particle.mesh.scale, { x: 1, y: 1, z: 1 })
     }
-    absorbCounter = 0
-    if (params.absorbMode) {
-      rampUpAudio.play()
-      addParticles()
-    } else {
-      rampUpAudio.pause()
-      rampUpAudio.currentTime = 0
-      stopAddParticles()
-    }
-  })
-
-  gui.add(params, "g").min(0.001).max(0.2).step(0.0001)
-
-  window.addEventListener("resize", onWindowResize)
-  window.addEventListener("keydown", onKeyDown)
-  window.addEventListener("keyup", onKeyUp)
-  // window.addEventListener("mouseup", onMouseUp)
-  // window.addEventListener("mousedown", onMouseDown)
+    tl.play()
+  }
+  absorbCounter = 0
+  if (absorbMode) {
+    rampUpAudio.play()
+    addParticles()
+  } else {
+    rampUpAudio.pause()
+    rampUpAudio.currentTime = 0
+    stopAddParticles()
+  }
 }
 
 function onWindowResize() {
@@ -249,6 +321,7 @@ const getRandomPosComponent = (avg) => Math.random() * avg - avg / 2
 
 const addParticles = () => {
   addParticlesInterval = setInterval(() => {
+    if (particles.length > 80) return
     const newParticle = {
       pos: new THREE.Vector3(getRandomPosComponent(50), getRandomPosComponent(50), getRandomPosComponent(50)),
       vel: new THREE.Vector3().randomDirection().multiplyScalar(0.2),
@@ -264,7 +337,7 @@ const addParticles = () => {
     gsap.to(newParticle.mesh.scale, { x: 1, y: 1, z: 1, duration: 0.4 })
     scene.add(newParticle.mesh)
     particles.push(newParticle)
-  }, 60)
+  }, 30)
 }
 
 const stopAddParticles = () => clearInterval(addParticlesInterval)
@@ -293,12 +366,27 @@ const spreadBack = () => {
 }
 
 function animate(t) {
-  const time = (t || 0) / 500
+  if (!model) return requestAnimationFrame(animate)
+  const time = (t || 0) / (exploding ? 4000 : 500)
+
+  // if (!exploding) {
+  //   if (activeGesture === "closed_hand") {
+  //     if (!absorbMode) {
+  //       absorbMode = true
+  //       handleAbsorbModeChange()
+  //     }
+  //   } else if (activeGesture === "open_hand") {
+  //     if (absorbMode) {
+  //       absorbMode = false
+  //       handleAbsorbModeChange()
+  //     }
+  //   }
+  // }
 
   for (const particle of particles) {
     addGravitationalForce(attractor, particle, params.g)
 
-    if (params.absorbMode) {
+    if (absorbMode) {
       if (isBInsideA(attractor, particle)) {
         scene.remove(particle.mesh)
         particles = particles.filter((p) => p.mesh.id !== particle.mesh.id)
@@ -316,18 +404,24 @@ function animate(t) {
       }
     }
 
-    if (collisionCheck(attractor, particle)) {
-      if (params.bounceMode) applyBounceForce(particle)
+    if (collisionCheck(attractorShield, particle)) {
+      if (params.bounceMode) {
+        attractorShieldOpacity += 0.2
+        applyBounceForce(particle)
+      }
       concentration += 0.8
     } else {
       if (concentration > 40) {
         concentration -= 0.16
       } else {
         concentration -= 0.08
+        attractorShieldOpacity -= 0.0005
       }
     }
 
     concentration = THREE.MathUtils.clamp(concentration, 0, 100)
+
+    attractorShieldOpacity = THREE.MathUtils.clamp(attractorShieldOpacity, 0, 1)
 
     particle.vel.add(particle.acc)
     particle.vel.clampLength(0, particle.speedLimit)
@@ -348,7 +442,7 @@ function animate(t) {
       .normalize()
       .multiplyScalar(
         attractor.mesh.geometry.parameters.radius +
-          (params.absorbMode ? Math.max(1, (1 - 1 / absorbCounter + 1) * 80) : concentration * 3) *
+          (absorbMode ? Math.max(1, (1 - 1 / absorbCounter + 1) * 80) : concentration * 3) *
             0.004 *
             simplex.noise3D(vertexVec.x * k + time, vertexVec.y * k + time, vertexVec.z * k + time)
       )
@@ -360,7 +454,7 @@ function animate(t) {
 
   glitchPass.strength = Math.min(1, THREE.MathUtils.lerp(glitchPass.strength, absorbCounter / 50, 0.1))
 
-  if (params.absorbMode) {
+  if (absorbMode) {
     // aiming for a diminishing return kind of curve, few first have a lot of impact but later on it kinda caps to a value
     let absorbScalar = (1 - 1 / absorbCounter + 1) * 1.2
     absorbScalar = Math.max(1, absorbScalar)
@@ -372,6 +466,14 @@ function animate(t) {
   if (!exploding) {
     attractor.mesh.scale.set(attractorScale, attractorScale, attractorScale)
   }
+
+  console.log(attractorShieldOpacity)
+
+  attractorShield.mesh.material.opacity = THREE.MathUtils.lerp(
+    attractorShield.mesh.material.opacity,
+    attractorShieldOpacity,
+    0.1
+  )
 
   requestAnimationFrame(animate)
 

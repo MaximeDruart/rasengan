@@ -10,8 +10,13 @@
     "vite": "^2.6.4"
   },
   "dependencies": {
+    "@tensorflow-models/handpose": "^0.0.7",
+    "@tensorflow/tfjs": "^3.11.0",
+    "fingerpose": "^0.1.0",
     "gsap": "^3.8.0",
+    "handtrackjs": "^0.1.5",
     "simplex-noise": "^3.0.0",
-    "three": "^0.134.0"
+    "three": "^0.134.0",
+    "webcam-easy": "^1.0.5"
   }
 }

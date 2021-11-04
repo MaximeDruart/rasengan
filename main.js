@@ -37,7 +37,7 @@ const startModel = async () => {
   await webcam.start()
 
   model = await handpose.load()
-  // detect()
+  detect()
 }
 
 const detect = async () => {
@@ -59,16 +59,15 @@ const detect = async () => {
     }
   }
 
-  // const ctx = canvasElement.getContext("2d")
-  // drawHand(predictions, ctx)
-
   setTimeout(() => {
     detect()
-  }, 100)
+  }, 120)
 }
 
 const explodeAudio = new Audio(explodeMP3)
+explodeAudio.volume = 0.8
 const rampUpAudio = new Audio(rampUpMP3)
+rampUpAudio.volume = 0.8
 
 let camera,
   scene,
@@ -77,9 +76,11 @@ let camera,
   particles,
   attractor,
   attractorShield,
+  attractorShadow,
   attractorShieldOpacity = 0,
   addParticlesInterval,
   absorbMode = false,
+  bounceMode = false,
   concentration = 0,
   attractorScale = 0,
   isHolding = false,
@@ -93,7 +94,6 @@ let camera,
   activeGesture = "open_hand"
 
 const params = {
-  bounceMode: false,
   bounceBetweenSpheres: false,
   g: 0.01,
 }
@@ -145,12 +145,26 @@ function init() {
 
   attractorShield = {
     mesh: new THREE.Mesh(
-      new THREE.SphereBufferGeometry(3.5, 64, 64),
-      new THREE.MeshBasicMaterial({ color: 0xccc, wireframe: true, transparent: true, opacity: 1 })
+      new THREE.SphereBufferGeometry(4.2, 32, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xccc,
+        wireframe: false,
+        transparent: true,
+        opacity: attractorShieldOpacity,
+      })
+    ),
+  }
+  attractorShadow = {
+    mesh: new THREE.Mesh(
+      new THREE.SphereBufferGeometry(8, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0xaaa, wireframe: false, transparent: true, opacity: 0.3 })
     ),
   }
 
+  attractorShadow.mesh.scale.set(0, 0, 0)
+
   scene.add(attractorShield.mesh)
+  scene.add(attractorShadow.mesh)
 
   scene.add(attractor.mesh)
   for (const particle of particles) {
@@ -184,10 +198,6 @@ function init() {
   glitchPass = new GlitchPass()
   glitchPass.goWild = true
 
-  outlinePass = new OutlinePass(new THREE.Vector2(window.innerWidth, window.innerHeight), scene, camera)
-
-  outlinePass.selectedObjects = particles.map((p) => p.mesh)
-
   // composer.addPass(outlinePass)
   composer.addPass(bloomPass)
 
@@ -201,20 +211,31 @@ function init() {
 
   const gui = new GUI()
 
-  gui.add(params, "bounceMode").onChange(() => {
-    if (params.bounceMode) {
-      concentration = 0
-      explode()
-    }
-  })
   gui.add(params, "bounceBetweenSpheres").onChange(() => {})
-  // gui.add(params, "absorbMode").onChange(handleAbsorbModeChange)
-
   gui.add(params, "g").min(0.001).max(0.2).step(0.0001)
 
   window.addEventListener("resize", onWindowResize)
   window.addEventListener("keydown", onKeyDown)
   window.addEventListener("keyup", onKeyUp)
+}
+
+function handleBounceModeChange() {
+  if (bounceMode) {
+    gsap
+      .timeline({
+        onComplete: () => {
+          attractorShadow.mesh.scale.set(0, 0, 0)
+          attractorShadow.mesh.material.opacity = 0.3
+          explode()
+        },
+      })
+      .to(attractorShadow.mesh.scale, { x: 1, y: 1, z: 1 })
+      .to(attractorShadow.mesh.material, { opacity: 0, ease: "bouce.inOut" })
+
+    concentration = 0
+  } else {
+    attractorShieldOpacity = 0
+  }
 }
 
 function handleAbsorbModeChange() {
@@ -301,6 +322,10 @@ function onKeyDown(e) {
     case "KeyK":
       spreadBack()
       break
+    case "KeyB":
+      bounceMode = !bounceMode
+      handleBounceModeChange()
+      break
 
     default:
       break
@@ -369,19 +394,20 @@ function animate(t) {
   if (!model) return requestAnimationFrame(animate)
   const time = (t || 0) / (exploding ? 4000 : 500)
 
-  // if (!exploding) {
-  //   if (activeGesture === "closed_hand") {
-  //     if (!absorbMode) {
-  //       absorbMode = true
-  //       handleAbsorbModeChange()
-  //     }
-  //   } else if (activeGesture === "open_hand") {
-  //     if (absorbMode) {
-  //       absorbMode = false
-  //       handleAbsorbModeChange()
-  //     }
-  //   }
-  // }
+  if (!exploding && !bounceMode) {
+    if (activeGesture === "closed_hand") {
+      if (!absorbMode) {
+        console.log("absorb mode true")
+        absorbMode = true
+        handleAbsorbModeChange()
+      }
+    } else if (activeGesture === "open_hand") {
+      if (absorbMode) {
+        absorbMode = false
+        handleAbsorbModeChange()
+      }
+    }
+  }
 
   for (const particle of particles) {
     addGravitationalForce(attractor, particle, params.g)
@@ -404,9 +430,9 @@ function animate(t) {
       }
     }
 
-    if (collisionCheck(attractorShield, particle)) {
-      if (params.bounceMode) {
-        attractorShieldOpacity += 0.2
+    if (collisionCheck(bounceMode ? attractorShield : attractor, particle)) {
+      if (bounceMode) {
+        attractorShieldOpacity += 0.16
         applyBounceForce(particle)
       }
       concentration += 0.8
@@ -415,13 +441,13 @@ function animate(t) {
         concentration -= 0.16
       } else {
         concentration -= 0.08
-        attractorShieldOpacity -= 0.0005
+        attractorShieldOpacity -= 0.0003
       }
     }
 
     concentration = THREE.MathUtils.clamp(concentration, 0, 100)
 
-    attractorShieldOpacity = THREE.MathUtils.clamp(attractorShieldOpacity, 0, 1)
+    attractorShieldOpacity = THREE.MathUtils.clamp(attractorShieldOpacity, 0, 0.65)
 
     particle.vel.add(particle.acc)
     particle.vel.clampLength(0, particle.speedLimit)
@@ -466,8 +492,6 @@ function animate(t) {
   if (!exploding) {
     attractor.mesh.scale.set(attractorScale, attractorScale, attractorScale)
   }
-
-  console.log(attractorShieldOpacity)
 
   attractorShield.mesh.material.opacity = THREE.MathUtils.lerp(
     attractorShield.mesh.material.opacity,

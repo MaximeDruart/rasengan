@@ -1,6 +1,7 @@
 import * as THREE from "three"
 const vec3c = new THREE.Vector3()
 const G = 0.01
+
 const applyForce = (obj, force) => {
   obj.acc.add(force)
 }

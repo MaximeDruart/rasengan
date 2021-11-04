@@ -28,11 +28,13 @@ const collisionCheck = (itemA, itemB) => {
 const isBInsideA = (itemA, itemB) => {
   const diff = vec3c.subVectors(itemA.mesh.position, itemB.mesh.position)
   const distance = diff.length()
-  const radiusSum =
-    itemA.mesh.geometry.parameters.radius * itemA.mesh.scale.x +
+
+  const maxLengthForCheck =
+    itemA.mesh.geometry.parameters.radius * itemA.mesh.scale.x -
     itemB.mesh.geometry.parameters.radius * itemB.mesh.scale.x
 
-  return distance < radiusSum
+  // multiplicating by 1.5 so it eats a little easier :)
+  return distance < maxLengthForCheck * 1.5
 }
 
 const applyBounceForce = (obj) => {

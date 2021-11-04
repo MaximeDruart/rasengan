@@ -23,19 +23,24 @@ class GlitchPass extends Pass {
     this.goWild = false
     this.curF = 0
     this.generateTrigger()
+
+    this.strength = 0
   }
 
   render(renderer, writeBuffer, readBuffer /*, deltaTime, maskActive */) {
     this.uniforms["tDiffuse"].value = readBuffer.texture
     this.uniforms["seed"].value = Math.random() //default seeding
-    this.uniforms["byp"].value = 1
+    this.uniforms["byp"].value = 0
 
-    this.uniforms["amount"].value = Math.random() / 200
-    this.uniforms["angle"].value = MathUtils.randFloat(-Math.PI, Math.PI)
-    this.uniforms["seed_x"].value = MathUtils.randFloat(-1, 1)
-    this.uniforms["seed_y"].value = MathUtils.randFloat(-1, 1)
-    this.uniforms["distortion_x"].value = MathUtils.randFloat(0, 1)
-    this.uniforms["distortion_y"].value = MathUtils.randFloat(0, 1)
+    // this.strength = MathUtils.mapLinear(Math.sin(Date.now() / 1000), -1, 1, 0, 1)
+
+    this.uniforms["amount"].value = Math.random() / MathUtils.mapLinear(this.strength, 0, 1, 20000, 200)
+    this.uniforms["angle"].value = MathUtils.randFloat(-Math.PI * this.strength, Math.PI * this.strength)
+    this.uniforms["seed_x"].value = MathUtils.randFloat(-this.strength, this.strength)
+    this.uniforms["seed_y"].value = MathUtils.randFloat(-this.strength, this.strength)
+    this.uniforms["distortion_x"].value = MathUtils.randFloat(0, this.strength)
+    this.uniforms["distortion_y"].value = MathUtils.randFloat(0, this.strength)
+    this.uniforms["col_s"].value = 0
 
     if (this.renderToScreen) {
       renderer.setRenderTarget(null)

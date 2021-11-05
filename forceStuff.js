@@ -43,4 +43,27 @@ const applyBounceForce = (obj) => {
   obj.vel = obj.vel.negate()
 }
 
-export { applyForce, addGravitationalForce, collisionCheck, applyBounceForce, isBInsideA }
+const explode = (attractor, particles) => {
+  for (const particle of particles) {
+    const force = vec3c.subVectors(particle.mesh.position, attractor.mesh.position)
+    force.multiplyScalar(0.06)
+
+    applyForce(particle, force)
+  }
+}
+const pullIn = (attractor, particles) => {
+  for (const particle of particles) {
+    const force = vec3c.subVectors(attractor.mesh.position, particle.mesh.position)
+    force.multiplyScalar(0.06)
+
+    applyForce(particle, force)
+  }
+}
+const spreadBack = (particles) => {
+  for (const particle of particles) {
+    const force = vec3c.randomDirection().multiplyScalar(0.2)
+    applyForce(particle, force)
+  }
+}
+
+export { applyForce, addGravitationalForce, collisionCheck, applyBounceForce, isBInsideA, explode, pullIn, spreadBack }

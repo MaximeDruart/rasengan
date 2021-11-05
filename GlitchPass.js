@@ -20,7 +20,6 @@ class GlitchPass extends Pass {
 
     this.fsQuad = new FullScreenQuad(this.material)
 
-    this.goWild = false
     this.curF = 0
     this.generateTrigger()
 

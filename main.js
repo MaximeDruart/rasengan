@@ -8,10 +8,9 @@ import * as handpose from "@tensorflow-models/handpose"
 import * as fp from "fingerpose"
 import { closedHandDescription, openHandDescription } from "./gestures"
 
-import "./style.css"
-
 import explodeMP3 from "./assets/explode.mp3"
 import rampUpMP3 from "./assets/rampUp.mp3"
+import "./style.css"
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js"
@@ -19,16 +18,58 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js"
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js"
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js"
 import { GlitchPass } from "./GlitchPass"
-import { OutlinePass } from "three/examples/jsm/postprocessing/OutlinePass.js"
-
 import { LuminosityShader } from "three/examples/jsm/shaders/LuminosityShader.js"
 import { SobelOperatorShader } from "three/examples/jsm/shaders/SobelOperatorShader.js"
-import { addGravitationalForce, applyBounceForce, applyForce, collisionCheck, isBInsideA } from "./forceStuff"
-
 import { GUI } from "three/examples/jsm/libs/dat.gui.module"
-import { animateLoader, initLoader, stopLoader } from "./loaderCanvas"
 
-let model
+import { animateLoader, initLoader, stopLoader } from "./loaderCanvas"
+import { getRandomPosComponent } from "./utils"
+import {
+  addGravitationalForce,
+  applyBounceForce,
+  collisionCheck,
+  explode,
+  isBInsideA,
+  pullIn,
+  spreadBack,
+} from "./forceStuff"
+
+let camera,
+  scene,
+  renderer,
+  composer,
+  particles,
+  attractor,
+  attractorShield,
+  attractorShadow,
+  attractorShieldOpacity = 0,
+  addParticlesInterval,
+  absorbMode = false,
+  bounceMode = false,
+  concentration = 0,
+  attractorScale = 0,
+  isHolding = false,
+  amountOfParticle = 25,
+  absorbCounter = 0,
+  exploding = false,
+  attractorMouseDownMaxScale = 1.6,
+  model,
+  webcamElement,
+  canvasElement,
+  webcam,
+  activeGesture = "open_hand",
+  effectSobel,
+  glitchPass
+
+const params = {
+  bounceBetweenSpheres: false,
+  g: 0.01,
+}
+
+const k = 3
+const vec3 = new THREE.Vector3()
+
+const simplex = new SimplexNoise()
 
 const startApp = async () => {
   initLoader()
@@ -38,10 +79,13 @@ const startApp = async () => {
   webcam = new Webcam(webcamElement, "user", canvasElement)
 
   await webcam.start()
+  console.log("WEBCAM STARTED")
 
   model = await handpose.load()
+  console.log("MODEL LOADED")
   detect()
   await stopLoader()
+  console.log("LOADER DELETED")
   init()
   animate()
 }
@@ -75,42 +119,6 @@ explodeAudio.volume = 0.8
 const rampUpAudio = new Audio(rampUpMP3)
 rampUpAudio.volume = 0.8
 
-let camera,
-  scene,
-  renderer,
-  composer,
-  particles,
-  attractor,
-  attractorShield,
-  attractorShadow,
-  attractorShieldOpacity = 0,
-  addParticlesInterval,
-  absorbMode = false,
-  bounceMode = false,
-  concentration = 0,
-  attractorScale = 0,
-  isHolding = false,
-  amountOfParticle = 25,
-  absorbCounter = 0,
-  exploding = false,
-  attractorMouseDownMaxScale = 1.6,
-  webcamElement,
-  canvasElement,
-  webcam,
-  activeGesture = "open_hand"
-
-const params = {
-  bounceBetweenSpheres: false,
-  g: 0.01,
-}
-
-const k = 3
-const vec3 = new THREE.Vector3()
-
-const simplex = new SimplexNoise()
-
-let effectSobel, glitchPass
-
 const attractorGeo = new THREE.SphereBufferGeometry(3, 64, 64)
 const attractorMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true })
 
@@ -120,15 +128,13 @@ const particleMat = new THREE.MeshBasicMaterial({ color: "red" })
 startApp()
 
 function init() {
-  //
-
   scene = new THREE.Scene()
 
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200)
   camera.position.set(0, 10, 12)
   camera.lookAt(scene.position)
 
-  //
+  // CREATE ITEMS
 
   attractor = {
     mass: 100,
@@ -177,12 +183,14 @@ function init() {
     scene.add(particle.mesh)
   }
 
+  // SET RENDERER
+
   renderer = new THREE.WebGLRenderer()
   renderer.setPixelRatio(window.devicePixelRatio)
   renderer.setSize(window.innerWidth, window.innerHeight)
   document.body.appendChild(renderer.domElement)
 
-  // postprocessing
+  // POSTPROCESSING
 
   composer = new EffectComposer(renderer)
   const renderPass = new RenderPass(scene, camera)
@@ -201,9 +209,7 @@ function init() {
   bloomPass.radius = 0
 
   glitchPass = new GlitchPass()
-  glitchPass.goWild = true
 
-  // composer.addPass(outlinePass)
   composer.addPass(bloomPass)
 
   composer.addPass(effectSobel)
@@ -231,7 +237,7 @@ function handleBounceModeChange() {
         onComplete: () => {
           attractorShadow.mesh.scale.set(0, 0, 0)
           attractorShadow.mesh.material.opacity = 0.3
-          explode()
+          explode(attractor, particles)
         },
       })
       .to(attractorShadow.mesh.scale, { x: 1, y: 1, z: 1 })
@@ -244,16 +250,18 @@ function handleBounceModeChange() {
 }
 
 function handleAbsorbModeChange() {
-  console.log("starting absorb change fn", absorbMode)
+  console.log("CHANGING ABSORD MODE TO :", absorbMode)
   if (absorbCounter > 50) {
     concentration = 10000
     const tl = gsap
       .timeline({
         onStart: () => {
+          stopAddParticles()
           exploding = true
           explodeAudio.play()
           for (const particle of particles) {
-            gsap.to(particle.mesh.scale, { x: 0, y: 0, z: 0 })
+            particle.mesh.visible = false
+            particle.mesh.scale.set(0, 0, 0)
           }
         },
       })
@@ -265,6 +273,7 @@ function handleAbsorbModeChange() {
           opacity: 0,
           duration: 3,
           onComplete: () => {
+            for (const particle of particles) particle.mesh.visible = true
             attractor.mesh.scale.set(0, 0, 0)
             attractorScale = 0
             exploding = false
@@ -315,16 +324,16 @@ function onWindowResize() {
 function onKeyDown(e) {
   switch (e.code) {
     case "KeyL":
-      explode()
+      explode(attractor, particles)
       break
     case "Semicolon":
-      pullIn()
+      pullIn(attractor, particles)
       break
     case "Space":
       isHolding = true
       break
     case "KeyK":
-      spreadBack()
+      spreadBack(particles)
       break
     case "KeyB":
       bounceMode = !bounceMode
@@ -335,6 +344,7 @@ function onKeyDown(e) {
       break
   }
 }
+
 function onKeyUp(e) {
   switch (e.code) {
     case "Space":
@@ -345,8 +355,6 @@ function onKeyUp(e) {
       break
   }
 }
-
-const getRandomPosComponent = (avg) => Math.random() * avg - avg / 2
 
 const addParticles = () => {
   addParticlesInterval = setInterval(() => {
@@ -371,29 +379,6 @@ const addParticles = () => {
 
 const stopAddParticles = () => clearInterval(addParticlesInterval)
 
-const explode = () => {
-  for (const particle of particles) {
-    const force = vec3.subVectors(particle.mesh.position, attractor.mesh.position)
-    force.multiplyScalar(0.06)
-
-    applyForce(particle, force)
-  }
-}
-const pullIn = () => {
-  for (const particle of particles) {
-    const force = vec3.subVectors(attractor.mesh.position, particle.mesh.position)
-    force.multiplyScalar(0.06)
-
-    applyForce(particle, force)
-  }
-}
-const spreadBack = () => {
-  for (const particle of particles) {
-    const force = vec3.randomDirection().multiplyScalar(0.2)
-    applyForce(particle, force)
-  }
-}
-
 function animate(t) {
   if (!model) return requestAnimationFrame(animate)
   const time = (t || 0) / (exploding ? 4000 : 500)
@@ -401,7 +386,6 @@ function animate(t) {
   if (!exploding && !bounceMode) {
     if (activeGesture === "closed_hand") {
       if (!absorbMode) {
-        console.log("absorb mode true")
         absorbMode = true
         handleAbsorbModeChange()
       }
@@ -450,14 +434,15 @@ function animate(t) {
     }
 
     concentration = THREE.MathUtils.clamp(concentration, 0, 100)
-
     attractorShieldOpacity = THREE.MathUtils.clamp(attractorShieldOpacity, 0, 0.65)
 
+    // UPDATE PARTICLE POSITION / VELOCITY / ACCELERATION
     particle.vel.add(particle.acc)
     particle.vel.clampLength(0, particle.speedLimit)
     particle.pos.add(particle.vel)
     particle.acc.multiplyScalar(0)
 
+    // SYNC PARTICLE DATA AND MESHES
     particle.mesh.position.copy(particle.pos)
     particle.mesh.lookAt(vec3.copy(particle.pos).add(particle.vel))
     particle.mesh.scale.y = THREE.MathUtils.mapLinear(particle.vel.length(), 10, particle.speedLimit, 1, 0.8)
@@ -504,6 +489,5 @@ function animate(t) {
   )
 
   requestAnimationFrame(animate)
-
   composer.render()
 }

@@ -6,7 +6,12 @@ import Webcam from "webcam-easy"
 import * as tf from "@tensorflow/tfjs"
 import * as handpose from "@tensorflow-models/handpose"
 import * as fp from "fingerpose"
-import { closedHandDescription, openHandDescription } from "./gestures"
+import {
+  closedHandDescription,
+  openHandDescription,
+  sideThumbCloseDescription,
+  sideThumbOpenDescription,
+} from "./gestures"
 
 import explodeMP3 from "./assets/sounds/explode.mp3"
 import rampUpMP3 from "./assets/sounds/rampUp.mp3"
@@ -105,7 +110,12 @@ const detect = async () => {
     palmPosition = { x: predictions[0].annotations.palmBase[0][0], y: predictions[0].annotations.palmBase[0][1] }
     palmPosition.x = palmPosition.x / 500
     palmPosition.y = palmPosition.y / 500 - 0.5
-    const GE = new fp.GestureEstimator([openHandDescription, closedHandDescription])
+    const GE = new fp.GestureEstimator([
+      openHandDescription,
+      closedHandDescription,
+      sideThumbOpenDescription,
+      sideThumbCloseDescription,
+    ])
     const gesture = await GE.estimate(predictions[0].landmarks, 4)
     if (gesture.gestures.length === 1) {
       activeGesture = gesture.gestures[0].name
@@ -118,6 +128,8 @@ const detect = async () => {
       }
       activeGesture = highestConfidenceGesture.name
     }
+
+    console.log(activeGesture)
   }
 
   setTimeout(() => {
@@ -394,6 +406,20 @@ const stopAddParticles = () => clearInterval(addParticlesInterval)
 function animate(t) {
   if (!model) return requestAnimationFrame(animate)
   const time = (t || 0) / (exploding ? 4000 : 500)
+
+  if (!exploding && !absorbMode) {
+    if (activeGesture === "side_thumb_open") {
+      if (!bounceMode) {
+        bounceMode = true
+        handleBounceModeChange()
+      }
+    } else if (activeGesture === "side_thumb_close") {
+      if (bounceMode) {
+        bounceMode = false
+        handleBounceModeChange()
+      }
+    }
+  }
 
   if (!exploding && !bounceMode) {
     if (activeGesture === "closed_hand") {

@@ -194,7 +194,7 @@ function init() {
   attractorShadow = {
     mesh: new THREE.Mesh(
       new THREE.SphereBufferGeometry(8, 32, 32),
-      new THREE.MeshBasicMaterial({ color: 0xaaa, wireframe: false, transparent: true, opacity: 0.3 })
+      new THREE.MeshBasicMaterial({ color: 0xaaa, wireframe: false, transparent: true, opacity: 0.4 })
     ),
   }
 
@@ -278,11 +278,11 @@ function handleBounceModeChange() {
         onStart: () => {
           closeShieldAudio.play()
           // attractorShadow.mesh.scale.set(1, 1, 1)
-          // attractorShadow.mesh.material.opacity = 0.3
+          // attractorShadow.mesh.material.opacity = 0.4
         },
       })
       .addLabel("sync")
-      .set(attractorShadow.mesh.material, { opacity: 0.3, ease: "bounce.inOut" })
+      .set(attractorShadow.mesh.material, { opacity: 0.4, ease: "bounce.inOut" })
       .to(attractorShadow.mesh.scale, { x: 0, y: 0, z: 0 }, "sync")
 
     attractorShieldOpacity = 0

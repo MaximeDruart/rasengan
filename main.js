@@ -8,8 +8,8 @@ import * as handpose from "@tensorflow-models/handpose"
 import * as fp from "fingerpose"
 import { closedHandDescription, openHandDescription } from "./gestures"
 
-import explodeMP3 from "./assets/explode.mp3"
-import rampUpMP3 from "./assets/rampUp.mp3"
+import explodeMP3 from "./assets/sounds/explode.mp3"
+import rampUpMP3 from "./assets/sounds/rampUp.mp3"
 import "./style.css"
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
@@ -57,7 +57,10 @@ let camera,
   webcamElement,
   canvasElement,
   webcam,
+  webcamWidth,
+  webcamHeight,
   activeGesture = "open_hand",
+  palmPosition = null,
   effectSobel,
   glitchPass
 
@@ -79,6 +82,11 @@ const startApp = async () => {
   webcam = new Webcam(webcamElement, "user", canvasElement)
 
   await webcam.start()
+
+  const info = await webcam.info()
+  const capabilities = info[0].getCapabilities()
+  webcamWidth = capabilities.width.max
+  webcamHeight = capabilities.height.max
   console.log("WEBCAM STARTED")
 
   model = await handpose.load()
@@ -91,9 +99,12 @@ const startApp = async () => {
 }
 
 const detect = async () => {
-  const predictions = await model.estimateHands(webcamElement)
+  const predictions = await model.estimateHands(webcamElement, true)
 
   if (predictions.length > 0) {
+    palmPosition = { x: predictions[0].annotations.palmBase[0][0], y: predictions[0].annotations.palmBase[0][1] }
+    palmPosition.x = palmPosition.x / 500
+    palmPosition.y = palmPosition.y / 500 - 0.5
     const GE = new fp.GestureEstimator([openHandDescription, closedHandDescription])
     const gesture = await GE.estimate(predictions[0].landmarks, 4)
     if (gesture.gestures.length === 1) {
@@ -137,6 +148,7 @@ function init() {
   // CREATE ITEMS
 
   attractor = {
+    pos: new THREE.Vector3(0, 0, 0),
     mass: 100,
     geo: attractorGeo,
     mat: attractorMat,
@@ -172,8 +184,8 @@ function init() {
 
   attractorShadow.mesh.scale.set(0, 0, 0)
 
-  scene.add(attractorShield.mesh)
-  scene.add(attractorShadow.mesh)
+  attractor.mesh.add(attractorShield.mesh)
+  attractor.mesh.add(attractorShadow.mesh)
 
   scene.add(attractor.mesh)
   for (const particle of particles) {
@@ -487,6 +499,14 @@ function animate(t) {
     attractorShieldOpacity,
     0.1
   )
+
+  if (palmPosition) {
+    attractor.pos.x = THREE.MathUtils.lerp(attractor.pos.x, palmPosition.x * 3, 0.08)
+    attractor.pos.y = THREE.MathUtils.lerp(attractor.pos.y, -palmPosition.y * 3, 0.08)
+    attractor.pos.z = THREE.MathUtils.lerp(attractor.pos.z, simplex.noise2D(palmPosition.x, palmPosition.y) * 1, 0.03)
+  }
+
+  attractor.mesh.position.copy(attractor.pos)
 
   requestAnimationFrame(animate)
   composer.render()

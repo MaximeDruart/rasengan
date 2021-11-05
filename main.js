@@ -26,10 +26,13 @@ import { SobelOperatorShader } from "three/examples/jsm/shaders/SobelOperatorSha
 import { addGravitationalForce, applyBounceForce, applyForce, collisionCheck, isBInsideA } from "./forceStuff"
 
 import { GUI } from "three/examples/jsm/libs/dat.gui.module"
+import { animateLoader, initLoader, stopLoader } from "./loaderCanvas"
 
 let model
 
-const startModel = async () => {
+const startApp = async () => {
+  initLoader()
+  animateLoader()
   webcamElement = document.getElementById("webcam-video")
   canvasElement = document.getElementById("webcam-canvas")
   webcam = new Webcam(webcamElement, "user", canvasElement)
@@ -38,6 +41,9 @@ const startModel = async () => {
 
   model = await handpose.load()
   detect()
+  await stopLoader()
+  init()
+  animate()
 }
 
 const detect = async () => {
@@ -103,7 +109,7 @@ const vec3 = new THREE.Vector3()
 
 const simplex = new SimplexNoise()
 
-let effectSobel, outlinePass, glitchPass
+let effectSobel, glitchPass
 
 const attractorGeo = new THREE.SphereBufferGeometry(3, 64, 64)
 const attractorMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true })
@@ -111,10 +117,7 @@ const attractorMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent:
 const particleGeo = new THREE.SphereBufferGeometry(1, 32, 32)
 const particleMat = new THREE.MeshBasicMaterial({ color: "red" })
 
-startModel()
-
-init()
-animate()
+startApp()
 
 function init() {
   //
@@ -168,6 +171,8 @@ function init() {
 
   scene.add(attractor.mesh)
   for (const particle of particles) {
+    particle.mesh.scale.set(0, 0, 0)
+    gsap.to(particle.mesh.scale, { x: 1, y: 1, z: 1, duration: 1.2, delay: Math.random() / 2 })
     particle.mesh.position.copy(particle.pos)
     scene.add(particle.mesh)
   }
@@ -206,8 +211,8 @@ function init() {
   composer.addPass(bloomPass)
 
   const controls = new OrbitControls(camera, renderer.domElement)
-  controls.minDistance = 10
-  controls.maxDistance = 100
+  controls.enableZoom = false
+  controls.enablePan = false
 
   const gui = new GUI()
 
@@ -245,7 +250,6 @@ function handleAbsorbModeChange() {
     const tl = gsap
       .timeline({
         onStart: () => {
-          console.log("tl is played")
           exploding = true
           explodeAudio.play()
           for (const particle of particles) {
@@ -502,5 +506,4 @@ function animate(t) {
   requestAnimationFrame(animate)
 
   composer.render()
-  // renderer.render(scene, camera)
 }

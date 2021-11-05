@@ -15,6 +15,8 @@ import {
 
 import explodeMP3 from "./assets/sounds/explode.mp3"
 import rampUpMP3 from "./assets/sounds/rampUp.mp3"
+import closeShieldMP3 from "./assets/sounds/closeShield.mp3"
+import openShieldMP3 from "./assets/sounds/openShield.mp3"
 import "./style.css"
 
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js"
@@ -128,8 +130,6 @@ const detect = async () => {
       }
       activeGesture = highestConfidenceGesture.name
     }
-
-    console.log(activeGesture)
   }
 
   setTimeout(() => {
@@ -141,6 +141,10 @@ const explodeAudio = new Audio(explodeMP3)
 explodeAudio.volume = 0.8
 const rampUpAudio = new Audio(rampUpMP3)
 rampUpAudio.volume = 0.8
+const openShieldAudio = new Audio(openShieldMP3)
+openShieldAudio.volume = 0.65
+const closeShieldAudio = new Audio(closeShieldMP3)
+closeShieldAudio.volume = 0.65
 
 const attractorGeo = new THREE.SphereBufferGeometry(3, 64, 64)
 const attractorMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true })
@@ -258,17 +262,29 @@ function handleBounceModeChange() {
   if (bounceMode) {
     gsap
       .timeline({
-        onComplete: () => {
-          attractorShadow.mesh.scale.set(0, 0, 0)
-          attractorShadow.mesh.material.opacity = 0.3
+        onStart: () => {
+          openShieldAudio.play()
           explode(attractor, particles)
         },
+        onComplete: () => {},
       })
       .to(attractorShadow.mesh.scale, { x: 1, y: 1, z: 1 })
-      .to(attractorShadow.mesh.material, { opacity: 0, ease: "bouce.inOut" })
+      .to(attractorShadow.mesh.material, { opacity: 0, ease: "bounce.inOut" })
 
     concentration = 0
   } else {
+    gsap
+      .timeline({
+        onStart: () => {
+          closeShieldAudio.play()
+          // attractorShadow.mesh.scale.set(1, 1, 1)
+          // attractorShadow.mesh.material.opacity = 0.3
+        },
+      })
+      .addLabel("sync")
+      .set(attractorShadow.mesh.material, { opacity: 0.3, ease: "bounce.inOut" })
+      .to(attractorShadow.mesh.scale, { x: 0, y: 0, z: 0 }, "sync")
+
     attractorShieldOpacity = 0
   }
 }

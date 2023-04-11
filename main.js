@@ -24,9 +24,11 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js"
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js"
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js"
+import { AfterimagePass } from "three/examples/jsm/postprocessing/AfterimagePass"
 import { GlitchPass } from "./GlitchPass"
 import { LuminosityShader } from "three/examples/jsm/shaders/LuminosityShader.js"
 import { SobelOperatorShader } from "three/examples/jsm/shaders/SobelOperatorShader.js"
+import { PixelShader } from "three/examples/jsm/shaders/PixelShader.js"
 import { GUI } from "three/examples/jsm/libs/dat.gui.module"
 
 import { animateLoader, initLoader, stopLoader } from "./loaderCanvas"
@@ -69,6 +71,7 @@ let camera,
   activeGesture = "open_hand",
   palmPosition = null,
   effectSobel,
+  effectPixel,
   glitchPass
 
 const params = {
@@ -231,18 +234,36 @@ function init() {
   effectSobel.uniforms["resolution"].value.x = window.innerWidth * window.devicePixelRatio
   effectSobel.uniforms["resolution"].value.y = window.innerHeight * window.devicePixelRatio
 
+  effectPixel = new ShaderPass(PixelShader)
+  console.log(effectPixel)
+  effectPixel.uniforms["resolution"].value = {
+    x: window.innerWidth * window.devicePixelRatio,
+    y: window.innerHeight * window.devicePixelRatio,
+  }
+
+  effectPixel.uniforms["pixelSize"].value = 10
+  // effectPixel.uniforms["resolution"].value
+
   const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85)
   bloomPass.threshold = 0
-  bloomPass.strength = 1
+  bloomPass.strength = 10
   bloomPass.radius = 0
 
   glitchPass = new GlitchPass()
 
-  composer.addPass(bloomPass)
+  // composer.addPass(bloomPass)
+
+  composer.addPass(effectPixel)
 
   composer.addPass(effectSobel)
   composer.addPass(glitchPass)
-  composer.addPass(bloomPass)
+
+  const bloomPass2 = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85)
+  bloomPass2.threshold = 0
+  bloomPass2.strength = 2
+  bloomPass2.radius = 0
+
+  composer.addPass(bloomPass2)
 
   const controls = new OrbitControls(camera, renderer.domElement)
   controls.enableZoom = false
@@ -290,7 +311,7 @@ function handleBounceModeChange() {
 }
 
 function handleAbsorbModeChange() {
-  console.log("CHANGING ABSORD MODE TO :", absorbMode)
+  console.log("CHANGING ABSORB MODE TO :", absorbMode)
   if (absorbCounter > 50) {
     concentration = 10000
     const tl = gsap
@@ -359,6 +380,8 @@ function onWindowResize() {
 
   effectSobel.uniforms["resolution"].value.x = window.innerWidth * window.devicePixelRatio
   effectSobel.uniforms["resolution"].value.y = window.innerHeight * window.devicePixelRatio
+  // effectPixel.uniforms["resolution"].value.x = window.innerWidth * window.devicePixelRatio
+  // effectPixel.uniforms["resolution"].value.y = window.innerHeight * window.devicePixelRatio
 }
 
 function onKeyDown(e) {
@@ -378,6 +401,10 @@ function onKeyDown(e) {
     case "KeyB":
       bounceMode = !bounceMode
       handleBounceModeChange()
+      break
+    case "KeyN":
+      absorbMode = !absorbMode
+      handleAbsorbModeChange()
       break
 
     default:
@@ -423,32 +450,36 @@ function animate(t) {
   if (!model) return requestAnimationFrame(animate)
   const time = (t || 0) / (exploding ? 4000 : 500)
 
-  if (!exploding && !absorbMode) {
-    if (activeGesture === "side_thumb_open") {
-      if (!bounceMode) {
-        bounceMode = true
-        handleBounceModeChange()
-      }
-    } else if (activeGesture === "side_thumb_close") {
-      if (bounceMode) {
-        bounceMode = false
-        handleBounceModeChange()
-      }
-    }
-  }
+  // if (!exploding && !absorbMode) {
+  //   if (activeGesture === "side_thumb_open") {
+  //     if (!bounceMode) {
+  //       bounceMode = true
+  //       handleBounceModeChange()
+  //     }
+  //   } else if (activeGesture === "side_thumb_close") {
+  //     if (bounceMode) {
+  //       bounceMode = false
+  //       handleBounceModeChange()
+  //     }
+  //   }
+  // }
 
   if (!exploding && !bounceMode) {
-    if (activeGesture === "closed_hand") {
-      if (!absorbMode) {
-        absorbMode = true
-        handleAbsorbModeChange()
-      }
-    } else if (activeGesture === "open_hand") {
-      if (absorbMode) {
-        absorbMode = false
-        handleAbsorbModeChange()
-      }
-    }
+    // if (activeGesture === "closed_hand") {
+    //   if (!absorbMode) {
+    //     absorbMode = true
+    //     handleAbsorbModeChange()
+    //   }
+    // } else if (activeGesture === "open_hand") {
+    //   if (absorbMode) {
+    //     absorbMode = false
+    //     handleAbsorbModeChange()
+    //   }
+    // }
+    // if (!absorbMode) {
+    //   absorbMode = true
+    //   handleAbsorbModeChange()
+    // }
   }
 
   for (const particle of particles) {

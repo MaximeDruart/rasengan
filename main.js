@@ -251,16 +251,16 @@ function init() {
 
   glitchPass = new GlitchPass()
 
-  // composer.addPass(bloomPass)
+  composer.addPass(bloomPass)
 
-  composer.addPass(effectPixel)
+  // composer.addPass(effectPixel)
 
   composer.addPass(effectSobel)
   composer.addPass(glitchPass)
 
   const bloomPass2 = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85)
   bloomPass2.threshold = 0
-  bloomPass2.strength = 2
+  bloomPass2.strength = 5
   bloomPass2.radius = 0
 
   composer.addPass(bloomPass2)
